@@ -1,0 +1,21 @@
+name: rl_atelier
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10.13
+  - pip:
+    - box2d-py==2.3.5
+    - flax>=0.8.0
+    - gymnasium==0.29.1
+    - hydra-core>=1.3.2
+    - jax>=0.4.26
+    - jaxlib>=0.4.26+cuda12.cudnn89
+    - matplotlib>=3.8.2
+    - omegaconf>=2.3.0
+    - optax>=0.1.7
+    - pandas>=2.3.1
+    - pygame==2.5.2
+    - swig==4.4.0
+    - tensorflow-probability>=0.22.1
+    - tqdm>=4.66.1
