@@ -1,0 +1,36 @@
+agent:
+  method: doubledqn # dqn, doubledqn
+  gamma: 0.999
+  learning_rate: 1e-3
+  update_target_every_x_steps: 5000
+  network_features: 
+    hidden_dims: ${as_tuple:256, 256}
+  eps_greedy_hp :
+    eps_decrease: exponential # exponential, linear
+    eps_end: 0.01
+    eps_end_at: 4.5e5
+
+buffer:
+  buffer_size: 200000
+
+alg_general:
+  batch_size: 64
+  max_steps: 500100
+  start_training_after_x_steps: 10000
+  eval_every_x_steps: 50000
+  update_params_every: 4
+
+seed: 0
+
+env:
+  env_name: LunarLander-v2
+  env_kwargs: 
+    max_episode_steps: 1000
+    continuous: False
+    gravity: -9.81
+    enable_wind: False
+    wind_power: 15.0
+    turbulence_power: 1.5
+
+logs:
+  save_dir: "./results"

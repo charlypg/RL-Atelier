@@ -1,0 +1,2 @@
+alg_general:
+  batch_size: 128
