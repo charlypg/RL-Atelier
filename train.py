@@ -249,7 +249,7 @@ def main(hydra_config):
             observation = next_observation
 
     # Save learning
-    os.path.join(save_dir, "metrics.csv")
+    logger.save(os.path.join(save_dir, "metrics.csv"))
 
     # Some figures
     df = logger.data
