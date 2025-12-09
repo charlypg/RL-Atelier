@@ -5,16 +5,14 @@ import numpy as np
 import jax
 import gymnasium as gym
 import matplotlib.pyplot as plt
-import pandas as pd
 from tqdm import tqdm
-from typing import Optional, Tuple
 
 from atelier.agents.dqn import DQN, DoubleDQN
 from atelier.buffers.xpag.buffer import DefaultBuffer
 from atelier.tools.csv_logging import CSVLogger
 from atelier.samplers.xpag.sampler import DefaultSampler
 from atelier.types import Params, Metrics
-
+from plotting import plot_from_dataframe
 from utils_config import (
     resolve_tuple, merge_base_variant_cli, get_str_date, two_hashes_from_dict
 )
@@ -56,32 +54,6 @@ def eval(
         "return_25": np.quantile(returns, 0.25),
         "return_75": np.quantile(returns, 0.75)
     }
-
-def plot_from_dataframe(
-    fig, ax,
-    df: pd.DataFrame,
-    x_key: str, y_key: str,
-    fill_between: Optional[Tuple[str, str]] = None,
-    xlabel: Optional[str] = None,
-    ylabel: Optional[str] = None
-):
-    x = pd.to_numeric(df[x_key], errors="coerce").to_numpy()
-    y = pd.to_numeric(df[y_key], errors="coerce").to_numpy()
-    
-    if fill_between is not None:
-        ymin = pd.to_numeric(df[fill_between[0]], errors="coerce").to_numpy()
-        ymax = pd.to_numeric(df[fill_between[1]], errors="coerce").to_numpy()
-        ax.fill_between(x, ymin, ymax, alpha=0.2)
-    
-    ax.plot(x, y)
-    ax.grid()
-
-    if xlabel is not None:
-        ax.set_xlabel(xlabel)
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
-
-    return fig, ax
 
 @hydra.main(config_path=None, config_name=None, version_base=None)
 def main(hydra_config):
@@ -167,7 +139,10 @@ def main(hydra_config):
         f.write(OmegaConf.to_yaml(OmegaConf.create(hashes["config_no_seed"])))
     
     # Main loop
-    logger = CSVLogger(save_dir=save_dir, filename="metrics.csv")
+    logger_eval = CSVLogger(save_dir=save_dir, filename="eval.csv")
+    logger_learning_metrics = CSVLogger(
+        save_dir=save_dir, filename="learning_metrics.csv"
+    )
     metrics = None
     observation, info = env.reset()
     for step in tqdm(range(cfg["alg_general"]["max_steps"])):
@@ -179,8 +154,9 @@ def main(hydra_config):
                 params=params,
                 nb_episodes=num_eval_episodes
             )
+            logger_eval.log(eval_metrics, step=step)
             if metrics is not None:
-                logger.log({**eval_metrics, **metrics}, step=step)
+                logger_learning_metrics.log(metrics, step=step)
                 print(
                     "step:", step, ";",
                     "epsilon: {:.2f}".format(epsilon), ";",
@@ -192,7 +168,6 @@ def main(hydra_config):
                     "next_q_mean:", metrics["next_q_mean"]
                 )
             else:
-                logger.log(eval_metrics, step=step)
                 print(
                     "step:", step, ";",
                     "epsilon: {:.2f}".format(epsilon), ";",
@@ -233,6 +208,7 @@ def main(hydra_config):
                     target_params=target_params,
                     batch=batch
                 )
+                # logger_learning_metrics.log(metrics, step=step) # DEBUG
             # Update target params
             target_params = agent.update_target_params(
                 params=params,
@@ -249,7 +225,11 @@ def main(hydra_config):
             observation = next_observation
 
     # Some figures
-    df = logger.get_dataframe()
+    import pandas as pd
+    df = pd.concat(
+        [logger_eval.get_dataframe(), logger_learning_metrics.get_dataframe()],
+        ignore_index=True
+    )
     fig, ax = plt.subplots()
     fig, ax = plot_from_dataframe(
         fig, ax, df,
