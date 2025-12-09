@@ -23,7 +23,7 @@ alg_general:
 seed: 0
 
 env:
-  env_name: LunarLander-v2
+  env_name: LunarLander-v3
   env_kwargs: 
     max_episode_steps: 1000
     continuous: False
