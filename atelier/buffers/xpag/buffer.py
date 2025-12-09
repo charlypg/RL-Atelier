@@ -5,14 +5,47 @@
 
 
 from abc import ABC, abstractmethod
+from enum import Enum
 import numpy as np
 import jax
 import jax.numpy as jnp
 from typing import Union, Dict, Any, Optional
-from xpag.tools.utils import DataType, datatype_convert
-from xpag.samplers.sampler import Sampler
 import joblib
 import os
+
+from atelier.samplers.xpag.sampler import Sampler
+
+
+class DataType(Enum):
+    NUMPY = "data represented as numpy arrays"
+    JAX = "data represented as jax.numpy arrays"
+
+
+def get_datatype(x: Union[np.ndarray, jnp.ndarray]) -> DataType:
+    if isinstance(x, jnp.ndarray):
+        return DataType.JAX
+    elif isinstance(x, np.ndarray):
+        return DataType.NUMPY
+    else:
+        raise TypeError(f"{type(x)} not handled.")
+
+
+def datatype_convert(
+    x: Union[np.ndarray, jnp.ndarray, list, float],
+    datatype: Union[DataType, None] = DataType.NUMPY,
+) -> Union[np.ndarray, jnp.ndarray]:
+    if datatype is None:
+        return x
+    elif datatype == DataType.NUMPY:
+        if isinstance(x, np.ndarray):
+            return x
+        else:
+            return np.array(x)
+    elif datatype == DataType.JAX:
+        if isinstance(x, jnp.ndarray):
+            return x
+        else:
+            return jnp.array(x)
 
 def batch_shapes(
     batch: Dict[str, Union[np.ndarray, jnp.ndarray]]
