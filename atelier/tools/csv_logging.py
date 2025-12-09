@@ -1,5 +1,7 @@
 import os
 import csv
+import pandas as pd
+from pathlib import Path
 
 def append_step(dico: dict, step: int):
     dico_to_write = dico.copy()
@@ -20,3 +22,10 @@ class CSVLogger:
                 writer.writeheader()
                 self.initialized = True
             writer.writerow(dico_to_write)
+
+    def get_dataframe(self):
+        """Loads data from a CSV file into a dataframe."""
+        filepath = Path(self.filepath)
+        if not filepath.exists():
+            raise FileNotFoundError(f"No file found at {filepath}")
+        return pd.read_csv(filepath)

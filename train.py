@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 from atelier.agents.dqn import DQN, DoubleDQN
 from atelier.buffers.xpag.buffer import DefaultBuffer
-from atelier.tools.pandas_logging import PandasLogger
+from atelier.tools.csv_logging import CSVLogger
 from atelier.samplers.xpag.sampler import DefaultSampler
 from atelier.types import Params, Metrics
 
@@ -167,7 +167,7 @@ def main(hydra_config):
         f.write(OmegaConf.to_yaml(OmegaConf.create(hashes["config_no_seed"])))
     
     # Main loop
-    logger = PandasLogger()
+    logger = CSVLogger(save_dir=save_dir, filename="metrics.csv")
     metrics = None
     observation, info = env.reset()
     for step in tqdm(range(cfg["alg_general"]["max_steps"])):
@@ -180,7 +180,7 @@ def main(hydra_config):
                 nb_episodes=num_eval_episodes
             )
             if metrics is not None:
-                logger.log({"step": step, **eval_metrics, **metrics})
+                logger.log({**eval_metrics, **metrics}, step=step)
                 print(
                     "step:", step, ";",
                     "epsilon: {:.2f}".format(epsilon), ";",
@@ -192,7 +192,7 @@ def main(hydra_config):
                     "next_q_mean:", metrics["next_q_mean"]
                 )
             else:
-                logger.log({"step": step, **eval_metrics})
+                logger.log(eval_metrics, step=step)
                 print(
                     "step:", step, ";",
                     "epsilon: {:.2f}".format(epsilon), ";",
@@ -248,11 +248,8 @@ def main(hydra_config):
         else:
             observation = next_observation
 
-    # Save learning
-    logger.save(os.path.join(save_dir, "metrics.csv"))
-
     # Some figures
-    df = logger.data
+    df = logger.get_dataframe()
     fig, ax = plt.subplots()
     fig, ax = plot_from_dataframe(
         fig, ax, df,
