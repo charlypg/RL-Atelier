@@ -12,7 +12,7 @@ Create conda environment:
 ```bash
 conda create --name rl_atelier python=3.10
 ```
-
+ 
 Activate conda environment:
 
 ```bash
