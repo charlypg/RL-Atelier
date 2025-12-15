@@ -15,16 +15,18 @@ buffer:
 
 alg_general:
   batch_size: 64
-  max_steps: 500100
-  start_training_after_x_steps: 10000
-  eval_every_x_steps: 50000
+  max_steps: 500_100
+  start_training_after_x_steps: 10_000
+  eval_every_x_steps: 48_000
   update_params_every: 4
 
 seed: 0
 
 env:
   env_name: LunarLander-v3
-  env_kwargs: 
+  num_envs: 12
+  eval_num_envs: 20
+  kwargs:
     max_episode_steps: 1000
     continuous: False
     gravity: -9.81

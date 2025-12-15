@@ -9,9 +9,10 @@ from tqdm import tqdm
 
 from atelier.agents.dqn import DQN, DoubleDQN
 from atelier.buffers.xpag.buffer import DefaultBuffer
-from atelier.tools.csv_logging import CSVLogger
+from atelier.tools.logging import CSVLogger, PrintLogger
 from atelier.samplers.xpag.sampler import DefaultSampler
 from atelier.types import Params, Metrics
+from atelier.wrappers.envs import make_envs
 from plotting import plot_from_dataframe
 from utils_config import (
     resolve_tuple, merge_base_variant_cli, get_str_date, two_hashes_from_dict
@@ -20,39 +21,30 @@ from utils_config import (
 OmegaConf.register_new_resolver("as_tuple", resolve_tuple)
 
 
-def eval_episode(
-    eval_env: gym.Env,
-    agent: DQN,
-    params: Params
-) -> float:
-    obs, info = eval_env.reset()
-    done = False
-    sum_of_rewards = 0
-    while not(done):
-        action = agent.select_single_action(params, obs)
-        next_obs, reward, term, trunc, info = eval_env.step(action)
-        sum_of_rewards += reward
-
-        done = term or trunc
-        obs = next_obs
-    return sum_of_rewards
-
-def eval(
-    eval_env: gym.Env,
+def evaluate(
+    eval_env: gym.vector.AsyncVectorEnv,
     agent: DQN,
     params: Params,
-    nb_episodes: int
+    np_rand_state: np.random.RandomState,
+    max_episode_steps: int
 ) -> Metrics:
-    returns = np.zeros((nb_episodes,))
-    for i in range(nb_episodes):
-        returns[i] = eval_episode(
-            eval_env=eval_env, agent=agent, params=params
-        )
+    shape_env = (eval_env.num_envs,)
+    obs, info = eval_env.reset(seed=np_rand_state.randint(1_000_000))
+    done = np.zeros(shape_env, dtype=np.bool_)
+    sum_of_rewards = np.zeros(shape_env)
+    for _ in range(max_episode_steps):
+        action = np.array(agent.select_action(params, obs))
+        next_obs, reward, term, trunc, info = eval_env.step(action.squeeze())
+
+        done = np.logical_or(term, trunc)
+        sum_of_rewards += reward * (1 - done)
+        obs = next_obs
+
     return {
-        "return_mean": np.mean(returns),
-        "return_median": np.median(returns),
-        "return_25": np.quantile(returns, 0.25),
-        "return_75": np.quantile(returns, 0.75)
+        "sum_rewards_mean": np.mean(sum_of_rewards),
+        "sum_rewards_median": np.median(sum_of_rewards),
+        "sum_rewards_25": np.quantile(sum_of_rewards, 0.25),
+        "sum_rewards_75": np.quantile(sum_of_rewards, 0.75)
     }
 
 @hydra.main(config_path=None, config_name=None, version_base=None)
@@ -68,24 +60,19 @@ def main(hydra_config):
         else:
             print("{0}: {1}".format(key, val))
 
-    # Environment
-    env = gym.make(
-        cfg["env"]["env_name"],
-        render_mode=None,
-        **cfg["env"]["env_kwargs"]
+    if not("max_episode_steps" in cfg["env"]["kwargs"]):
+        raise "NO max_episode_steps in env.kwargs"
+    env, env_info = make_envs(
+        env_name=cfg["env"]["env_name"],
+        num_envs=cfg["env"]["num_envs"],
+        **cfg["env"]["kwargs"]
     )
-    num_eval_episodes = 20
-    if num_eval_episodes == 1:
-        eval_render_mode = "human"
-    else:
-        eval_render_mode = None
-    eval_env = gym.make(
-        cfg["env"]["env_name"],
-        render_mode=eval_render_mode,
-        **cfg["env"]["env_kwargs"]
+    eval_env, _ = make_envs(
+        env_name=cfg["env"]["env_name"],
+        num_envs=cfg["env"]["eval_num_envs"],
+        **cfg["env"]["kwargs"]
     )
-    observation_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    print(env_info)
 
     # JAX random state
     seed = cfg["seed"]
@@ -103,7 +90,8 @@ def main(hydra_config):
         raise NotImplementedError
     
     agent = agent_class(
-        observation_dim=observation_dim, action_dim=action_dim,
+        observation_dim=env_info["observation_dim"], 
+        action_dim=env_info["action_dim"],
         gamma=cfg["agent"]["gamma"],
         learning_rate=cfg["agent"]["learning_rate"],
         update_target_every_x_steps=cfg["agent"]["update_target_every_x_steps"],
@@ -139,68 +127,61 @@ def main(hydra_config):
         f.write(OmegaConf.to_yaml(OmegaConf.create(hashes["config_no_seed"])))
     
     # Main loop
+    print_logger = PrintLogger(debug=True)
     logger_eval = CSVLogger(save_dir=save_dir, filename="eval.csv")
     logger_learning_metrics = CSVLogger(
         save_dir=save_dir, filename="learning_metrics.csv"
     )
     metrics = None
     observation, info = env.reset()
-    for step in tqdm(range(cfg["alg_general"]["max_steps"])):
+    num_iterations = cfg["alg_general"]["max_steps"] // cfg["env"]["num_envs"]
+    assert(cfg["env"]["num_envs"] % cfg["alg_general"]["update_params_every"] == 0)
+    assert(cfg["env"]["num_envs"] >= cfg["alg_general"]["update_params_every"])
+    num_gd_steps_per_step = cfg["env"]["num_envs"] // cfg["alg_general"]["update_params_every"]
+    print("num_gd_steps_per_step:", num_gd_steps_per_step)
+    for i in tqdm(range(num_iterations)):
         # Evaluation
-        if step % cfg["alg_general"]["eval_every_x_steps"] == 0:
-            eval_metrics = eval(
+        if (i * cfg["env"]["num_envs"]) % cfg["alg_general"]["eval_every_x_steps"] == 0:
+            eval_metrics = evaluate(
                 eval_env=eval_env,
                 agent=agent,
                 params=params,
-                nb_episodes=num_eval_episodes
+                np_rand_state=np_rand_state,
+                max_episode_steps=cfg["env"]["kwargs"]["max_episode_steps"]
             )
-            logger_eval.log(eval_metrics, step=step)
+            logger_eval.log(eval_metrics, step=i * cfg["env"]["num_envs"])
             if metrics is not None:
-                logger_learning_metrics.log(metrics, step=step)
-                print(
-                    "step:", step, ";",
-                    "epsilon: {:.2f}".format(epsilon), ";",
-                    "return_median: {:.3f}".format(eval_metrics["return_median"]), ";",
-                    "return_25: {:.3f}".format(eval_metrics["return_25"]), ";",
-                    "return_75: {:.3f}".format(eval_metrics["return_75"]), ";",
-                    "loss:", metrics["loss"],
-                    "q_mean:", metrics["q_mean"],
-                    "next_q_mean:", metrics["next_q_mean"]
-                )
+                logger_learning_metrics.log(metrics, step=i * cfg["env"]["num_envs"])
+                print_logger.log({**eval_metrics, **metrics}, step=i * cfg["env"]["num_envs"])
             else:
-                print(
-                    "step:", step, ";",
-                    "epsilon: {:.2f}".format(epsilon), ";",
-                    "return_median: {:.3f}".format(eval_metrics["return_median"]), ";",
-                    "return_25: {:.3f}".format(eval_metrics["return_25"]), ";",
-                    "return_75: {:.3f}".format(eval_metrics["return_75"]), ";"
-                )
+                print_logger.log(eval_metrics, step=i * cfg["env"]["num_envs"])
 
         # Select action
         if np_rand_state.uniform() < epsilon:
-            action = env.action_space.sample()
+            action = np.expand_dims(env.action_space.sample(), axis=-1)
         else:
-            action = agent.select_single_action(params, observation)
+            action = np.array(agent.select_action(params, observation))
         
         # Perform step
-        next_observation, reward, terminated, truncated, info = env.step(action)
+        next_observation, reward, terminated, truncated, info = env.step(action.squeeze())
 
         # Store transition
         transition = {
-            "observation": np.expand_dims(observation, axis=0),
-            "action": np.array([[action]], dtype=np.int64),
-            "next_observation": np.expand_dims(next_observation, axis=0),
-            "reward": np.array([[reward]]),
-            "terminated": np.array([[terminated]])
+            "observation": observation,
+            "action": action,
+            "next_observation": next_observation,
+            "reward": np.expand_dims(reward, axis=-1),
+            "terminated": np.expand_dims(terminated, axis=-1)
         }
         buffer.insert(transition)
 
         # Update if necessary
-        if step > cfg["alg_general"]["start_training_after_x_steps"]:
+        if i * cfg["env"]["num_envs"] > cfg["alg_general"]["start_training_after_x_steps"]:
             # Sample batch
             batch = buffer.sample(cfg["alg_general"]["batch_size"])
 
-            if step % cfg["alg_general"]["update_params_every"] == 0:
+            # TODO: encapsulate updates
+            for _ in range(num_gd_steps_per_step):
                 # Perform gradient descent step
                 params, opt_state, updates, grad, metrics = agent.gradient_step(
                     params=params,
@@ -209,18 +190,24 @@ def main(hydra_config):
                     batch=batch
                 )
                 # logger_learning_metrics.log(metrics, step=step) # DEBUG
-            # Update target params
-            target_params = agent.update_target_params(
-                params=params,
-                target_params=target_params,
-                step=step
-            )
-            # Update epsilon
-            epsilon = agent.update_epsilon(epsilon)
+            for k in range(cfg["env"]["num_envs"]):
+                # Update target params
+                target_params = agent.update_target_params(
+                    params=params,
+                    target_params=target_params,
+                    step=i*cfg["env"]["num_envs"]+k
+                )
+                # Update epsilon
+                epsilon = agent.update_epsilon(epsilon)
+            metrics["epsilon"] = epsilon
 
         # Prepare next iter
-        if terminated or truncated:
-            observation, info = env.reset()
+        done = np.logical_or(terminated, truncated)
+        if np.max(done):
+            observation, info = env.reset(
+                options={"reset_mask": done}, 
+                seed=np_rand_state.randint(1_000_000)
+            )
         else:
             observation = next_observation
 
@@ -233,8 +220,8 @@ def main(hydra_config):
     fig, ax = plt.subplots()
     fig, ax = plot_from_dataframe(
         fig, ax, df,
-        x_key="step", y_key="return_median",
-        fill_between=("return_25", "return_75"),
+        x_key="step", y_key="sum_rewards_median",
+        fill_between=("sum_rewards_25", "sum_rewards_75"),
         xlabel="Step",
         ylabel="Return"
     )

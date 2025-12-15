@@ -99,7 +99,7 @@ class DQN:
     ) -> jnp.ndarray:
         print("COMPILE: DQN.select_action")
         actions_values = self.network.apply({"params": params}, observation)
-        return jnp.argmax(actions_values, axis=-1)
+        return jnp.argmax(actions_values, axis=-1, keepdims=True)
     
     def select_single_action(
         self,
