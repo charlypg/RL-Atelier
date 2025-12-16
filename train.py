@@ -106,6 +106,7 @@ def main(hydra_config):
         observation_dim=observation_dim, action_dim=action_dim,
         gamma=cfg["agent"]["gamma"],
         learning_rate=cfg["agent"]["learning_rate"],
+        update_params_every=cfg["agent"]["update_params_every"],
         update_target_every_x_steps=cfg["agent"]["update_target_every_x_steps"],
         network_features=cfg["agent"]["network_features"],
         eps_greedy_hp=cfg["agent"]["eps_greedy_hp"]
@@ -199,24 +200,22 @@ def main(hydra_config):
         if step > cfg["alg_general"]["start_training_after_x_steps"]:
             # Sample batch
             batch = buffer.sample(cfg["alg_general"]["batch_size"])
-
-            if step % cfg["alg_general"]["update_params_every"] == 0:
-                # Perform gradient descent step
-                params, opt_state, updates, grad, metrics = agent.gradient_step(
-                    params=params,
-                    opt_state=opt_state,
-                    target_params=target_params,
-                    batch=batch
-                )
-                # logger_learning_metrics.log(metrics, step=step) # DEBUG
-            # Update target params
-            target_params = agent.update_target_params(
+            (
+                params,
+                opt_state,
+                target_params,
+                epsilon,
+                updates,
+                grad,
+                metrics
+            ) = agent.update(
                 params=params,
+                opt_state=opt_state,
                 target_params=target_params,
+                batch=batch,
+                epsilon=epsilon,
                 step=step
             )
-            # Update epsilon
-            epsilon = agent.update_epsilon(epsilon)
 
         # Prepare next iter
         if terminated or truncated:

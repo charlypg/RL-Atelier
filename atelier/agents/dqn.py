@@ -8,7 +8,7 @@ from typing import Dict, Tuple
 from atelier.networks.dqn import DeepQNetwork
 from atelier.types import Metrics, Params
 from atelier.utils import (
-    init, apply_updates, huber, get_shapes
+    init, apply_updates, huber, get_shapes, grad_norm
 )
 
 
@@ -20,6 +20,7 @@ class DQN:
         action_dim: int,
         gamma: float = 0.99,
         learning_rate = 3e-4,
+        update_params_every: int = 4,
         update_target_every_x_steps: int = 10_000,
         network_features: dict = dict(hidden_dims=(128, 128)),
         eps_greedy_hp: dict = dict(
@@ -54,6 +55,7 @@ class DQN:
 
         # Optimization
         self.optimizer = optax.adam(learning_rate=learning_rate)
+        self.update_params_every = update_params_every
         self.update_target_every_x_steps = update_target_every_x_steps
 
         # Neural network
@@ -198,20 +200,22 @@ class DQN:
         params: Params,
         opt_state: optax.OptState,
         target_params: Params,
-        epsilon: float,
         batch: Dict[str, np.ndarray],
+        epsilon: float,
         step: int
-    ) -> tuple:
-        # Perform gradient descent step
-        params, opt_state, updates, grad, metrics = self.gradient_step(
-            params=params,
-            opt_state=opt_state,
-            target_params=target_params,
-            batch=batch
-        )
-
-        # Update epsilon
-        epsilon = self.update_epsilon(epsilon)
+    ):
+        if step % self.update_params_every == 0:
+            # Perform gradient descent step
+            params, opt_state, updates, grad, metrics = self.gradient_step(
+                params=params,
+                opt_state=opt_state,
+                target_params=target_params,
+                batch=batch
+            )
+        else:
+            updates = None
+            grad = None
+            metrics = None
 
         # Update target params
         target_params = self.update_target_params(
@@ -220,7 +224,18 @@ class DQN:
             step=step
         )
 
-        return params, opt_state, target_params, epsilon, metrics
+        # Update epsilon
+        epsilon = self.update_epsilon(epsilon)
+
+        return (
+            params,
+            opt_state,
+            target_params,
+            epsilon,
+            updates,
+            grad,
+            metrics
+        )
 
 
 class DoubleDQN(DQN):

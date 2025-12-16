@@ -2,6 +2,7 @@ agent:
   method: doubledqn # dqn, doubledqn
   gamma: 0.999
   learning_rate: 1e-3
+  update_params_every: 4
   update_target_every_x_steps: 5000
   network_features: 
     hidden_dims: ${as_tuple:256, 256}
@@ -18,7 +19,6 @@ alg_general:
   max_steps: 500100
   start_training_after_x_steps: 10000
   eval_every_x_steps: 50000
-  update_params_every: 4
 
 seed: 0
 
