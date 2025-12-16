@@ -144,7 +144,7 @@ def main(hydra_config):
     logger_learning_metrics = CSVLogger(
         save_dir=save_dir, filename="learning_metrics.csv"
     )
-    metrics = None
+    learning_metrics = None
     observation, info = env.reset()
     for step in tqdm(range(cfg["alg_general"]["max_steps"])):
         # Evaluation
@@ -156,17 +156,17 @@ def main(hydra_config):
                 nb_episodes=num_eval_episodes
             )
             logger_eval.log(eval_metrics, step=step)
-            if metrics is not None:
-                logger_learning_metrics.log(metrics, step=step)
+            if learning_metrics is not None:
+                logger_learning_metrics.log(learning_metrics, step=step)
                 print(
                     "step:", step, ";",
                     "epsilon: {:.2f}".format(epsilon), ";",
                     "return_median: {:.3f}".format(eval_metrics["return_median"]), ";",
                     "return_25: {:.3f}".format(eval_metrics["return_25"]), ";",
                     "return_75: {:.3f}".format(eval_metrics["return_75"]), ";",
-                    "loss:", metrics["loss"],
-                    "q_mean:", metrics["q_mean"],
-                    "next_q_mean:", metrics["next_q_mean"]
+                    "loss:", learning_metrics["loss"],
+                    "q_mean:", learning_metrics["q_mean"],
+                    "next_q_mean:", learning_metrics["next_q_mean"]
                 )
             else:
                 print(
@@ -216,6 +216,8 @@ def main(hydra_config):
                 epsilon=epsilon,
                 step=step
             )
+            if metrics is not None:
+                learning_metrics = metrics.copy()
 
         # Prepare next iter
         if terminated or truncated:
