@@ -139,12 +139,14 @@ class DQN:
         target_values = rewards + self.gamma * masks * next_values
         print(rewards.shape, masks.shape, next_values.shape)
         print(current_action_values.shape, target_values.shape)
-        batch_loss = huber(current_action_values - target_values)
+        td_error = current_action_values - target_values
+        batch_loss = huber(td_error)
         loss = jnp.mean(batch_loss)
         return loss, {
             "loss": loss,
             "q_mean": jnp.mean(current_action_values),
-            "next_q_mean": jnp.mean(next_values)
+            "next_q_mean": jnp.mean(next_values),
+            "abs_td_error": jnp.abs(td_error)
         }
     
     @functools.partial(
@@ -206,7 +208,7 @@ class DQN:
     ):
         if step % self.update_params_every == 0:
             # Perform gradient descent step
-            params, opt_state, updates, grad, metrics = self.gradient_step(
+            params, opt_state, updates, grad, grad_metrics = self.gradient_step(
                 params=params,
                 opt_state=opt_state,
                 target_params=target_params,
@@ -215,7 +217,7 @@ class DQN:
         else:
             updates = None
             grad = None
-            metrics = None
+            grad_metrics = None
 
         # Update target params
         target_params = self.update_target_params(
@@ -234,7 +236,7 @@ class DQN:
             epsilon,
             updates,
             grad,
-            metrics
+            grad_metrics
         )
 
 
@@ -273,10 +275,12 @@ class DoubleDQN(DQN):
         print(rewards.shape, masks.shape, next_values.shape)
         print(current_action_values.shape, target_values.shape)
         # Compute loss
-        batch_loss = huber(current_action_values - target_values)
+        td_error = current_action_values - target_values
+        batch_loss = huber(td_error)
         loss = jnp.mean(batch_loss)
         return loss, {
             "loss": loss,
             "q_mean": jnp.mean(current_action_values),
-            "next_q_mean": jnp.mean(next_values)
+            "next_q_mean": jnp.mean(next_values),
+            "abs_td_error": jnp.abs(td_error)
         }

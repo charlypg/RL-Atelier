@@ -11,12 +11,15 @@ class SumTree:
     Internally stores exp(priority) so that sampling probability is softmax.
     """
 
-    def __init__(self, capacity: int, alpha: float = 1.0):
+    def __init__(
+        self, capacity: int, alpha: float = 1.0, init_max_priority: float = 1.0
+    ):
         self.capacity = capacity
         self.tree = np.zeros(2 * capacity - 1, dtype=np.float64)
         self.data = np.zeros(capacity, dtype=np.int64)
         self.raw_priorities = np.zeros(capacity, dtype=np.float64)
         self.alpha = alpha
+        self.init_max_priority = init_max_priority
 
         self.write = 0
         self.size = 0
@@ -37,6 +40,14 @@ class SumTree:
             else:
                 value -= self.tree[left]
                 idx = left + 1
+
+    def max_priority(self):
+        """
+        Return the maximum raw priority currently stored in the tree.
+        """
+        if self.size == 0:
+            return self.init_max_priority
+        return np.max(self.raw_priorities[:self.size])
 
 
     def total(self):
@@ -119,18 +130,27 @@ class PERSampler(Sampler):
         self,
         buffer_size: int,
         alpha: float,
+        init_max_priority: float = 1.0,
         seed: Union[int, None] = None
     ):
         Sampler.__init__(self, seed=seed)
         
         # Encapsulate a SumTree for prioritized sampling
-        self.sum_tree = SumTree(capacity=buffer_size, alpha=alpha)
+        self.sum_tree = SumTree(
+            capacity=buffer_size, alpha=alpha, init_max_priority=init_max_priority
+        )
 
-    def insert(self, idxs: np.ndarray, priorities: np.ndarray):
+    def insert(self, idxs: np.ndarray, **kwargs):
+        # Insert new transitions according to proportional PER
+        # Cf Algorithm 1 https://arxiv.org/pdf/1511.05952
+        max_priority = self.sum_tree.max_priority()
+        priorities = max_priority * np.ones(shape=idxs.shape)
         self.sum_tree.add_batch(idxs, priorities)
 
-    def update(self, idxs: np.ndarray, priorities: np.ndarray):
-        self.sum_tree.update_batch(idxs, priorities)
+    def update(self, idxs: np.ndarray, per_priorities: np.ndarray, **kwargs):
+        # Update priorities according to proportional PER
+        # Cf Algorithm 1 https://arxiv.org/pdf/1511.05952
+        self.sum_tree.update_batch(idxs, per_priorities)
 
     def sample(
         self,

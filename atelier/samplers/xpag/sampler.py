@@ -25,9 +25,11 @@ class Sampler(ABC):
         pass
 
     def insert(self, **kwargs):
+        """Modify sampler state at data insertion"""
         pass
 
     def update(self, **kwargs):
+        """Updates sampler at agent update"""
         pass
 
 

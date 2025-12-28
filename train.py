@@ -32,12 +32,14 @@ def evaluate(
     obs, info = eval_env.reset(seed=np_rand_state.randint(1_000_000))
     done = np.zeros(shape_env, dtype=np.bool_)
     sum_of_rewards = np.zeros(shape_env)
+    flags = np.zeros(shape_env)
     for _ in range(max_episode_steps):
         action = np.array(agent.select_action(params, obs))
         next_obs, reward, term, trunc, info = eval_env.step(action)
 
         done = np.logical_or(term, trunc)
-        sum_of_rewards += reward * (1 - done)
+        flags = np.logical_or(flags, done)
+        sum_of_rewards += reward * (1 - flags)
         obs = next_obs
 
     return {
@@ -182,13 +184,12 @@ def main(hydra_config):
             "reward": np.array([[reward]]),
             "terminated": np.array([[terminated]])
         }
-        # TODO: Add PER sampler insertion (inside buffer class: insert_sampler method)
+        # Insert transition in buffer
         buffer.insert(transition)
 
         # Update if necessary
         if step > cfg["alg_general"]["start_training_after_x_steps"]:
             # Sample batch
-            # TODO: add per sampling (inside buffer class)
             batch, batch_info = buffer.sample(cfg["alg_general"]["batch_size"])
             
             # Update agent
@@ -199,7 +200,7 @@ def main(hydra_config):
                 epsilon,
                 updates,
                 grad,
-                metrics
+                grad_metrics
             ) = agent.update(
                 params=params,
                 opt_state=opt_state,
@@ -208,9 +209,14 @@ def main(hydra_config):
                 epsilon=epsilon,
                 step=step
             )
-            # TODO: update sampler via buffer (buffer.update method)
-            if metrics is not None:
-                learning_metrics = metrics.copy()
+
+            if grad_metrics is not None:
+                # Update learning metrics
+                learning_metrics = grad_metrics.copy()
+                
+                # Update sampler
+                batch_info["per_priorities"] = grad_metrics["abs_td_error"]
+                buffer.update_sampler(**batch_info)
 
         # Prepare next iter
         if terminated or truncated:
