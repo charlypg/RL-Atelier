@@ -182,12 +182,14 @@ def main(hydra_config):
             "reward": np.array([[reward]]),
             "terminated": np.array([[terminated]])
         }
+        # TODO: Add PER sampler insertion (inside buffer class: insert_sampler method)
         buffer.insert(transition)
 
         # Update if necessary
         if step > cfg["alg_general"]["start_training_after_x_steps"]:
             # Sample batch
-            batch = buffer.sample(cfg["alg_general"]["batch_size"])
+            # TODO: add per sampling (inside buffer class)
+            batch, batch_info = buffer.sample(cfg["alg_general"]["batch_size"])
             
             # Update agent
             (
@@ -206,6 +208,7 @@ def main(hydra_config):
                 epsilon=epsilon,
                 step=step
             )
+            # TODO: update sampler via buffer (buffer.update method)
             if metrics is not None:
                 learning_metrics = metrics.copy()
 
