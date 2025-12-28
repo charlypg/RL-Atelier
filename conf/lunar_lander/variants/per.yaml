@@ -1,0 +1,4 @@
+buffer:
+  buffer_size: 200000
+  per_sampler:
+    alpha: 0.7

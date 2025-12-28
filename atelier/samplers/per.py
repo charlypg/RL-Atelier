@@ -158,6 +158,6 @@ class PERSampler(Sampler):
         batch_size: int,
     ) -> Tuple[Dict[str, Union[np.ndarray, jnp.ndarray]], dict]:
         """Return a batch of transitions"""
-        idxs = self.sum_tree.sample(batch_size)
+        idxs, _ = self.sum_tree.sample(batch_size)
         transitions = {key: buffer[key][idxs] for key in buffer.keys()}
         return transitions, {"idxs": idxs}
