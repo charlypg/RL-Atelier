@@ -11,6 +11,7 @@ from atelier.agents.dqn import DQN, DoubleDQN
 from atelier.buffers.xpag.buffer import DefaultBuffer
 from atelier.tools.csv_logging import CSVLogger
 from atelier.samplers.xpag.sampler import DefaultSampler
+from atelier.samplers.per import PERSampler
 from atelier.types import Params, Metrics
 from plotting import plot_from_dataframe
 from utils_config import (
@@ -114,9 +115,19 @@ def main(hydra_config):
     params, opt_state, target_params, epsilon = agent.init(sub)
 
     # Buffer and sampler
+    if not("per_sampler" in cfg["buffer"]):
+        print("sampler: DefaultSampler")
+        sampler = DefaultSampler()
+    else:
+        print("sampler: PERSampler")
+        sampler = PERSampler(
+            buffer_size=cfg["buffer"]["buffer_size"],
+            alpha=cfg["buffer"]["per_sampler"]["alpha"]
+        )
+
     buffer = DefaultBuffer(
         buffer_size=cfg["buffer"]["buffer_size"],
-        sampler=DefaultSampler()
+        sampler=sampler
     )
 
     # cfg id and save_dir
@@ -212,7 +223,7 @@ def main(hydra_config):
                 # logger_learning_metrics.log(metrics, step=step) # DEBUG
 
                 # Update sampler on gradient step
-                # TODO: batch_info update if necessary
+                batch_info["per_priorities"] = metrics["abs_td_error"]
                 buffer.update_sampler(**batch_info)
             
             # Update target params
