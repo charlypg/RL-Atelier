@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import jax.numpy as jnp
-from typing import Union, Dict
+from typing import Any, Union, Dict, Tuple
 
 
 class Sampler(ABC):
@@ -20,8 +20,16 @@ class Sampler(ABC):
         self,
         buffer,
         batch_size: int,
-    ) -> Dict[str, Union[np.ndarray, jnp.ndarray]]:
+    ) -> Tuple[Dict[str, Union[np.ndarray, jnp.ndarray]], Dict[str, Any]]:
         """Return a batch of transitions"""
+        pass
+
+    def insert(self, **kwargs):
+        """Modify sampler state on data insertion"""
+        pass
+
+    def update(self, **kwargs):
+        """Update sampler on agent update"""
         pass
 
 
@@ -33,7 +41,7 @@ class DefaultSampler(Sampler):
         self,
         buffer: Dict[str, Union[np.ndarray]],
         batch_size: int,
-    ) -> Dict[str, Union[np.ndarray]]:
+    ) -> Tuple[Dict[str, Union[np.ndarray, jnp.ndarray]], Dict[str, Any]]:
         buffer_size = next(iter(buffer.values())).shape[0]
         idxs = self.rng.choice(
             buffer_size,
@@ -41,7 +49,7 @@ class DefaultSampler(Sampler):
             replace=True,
         )
         transitions = {key: buffer[key][idxs] for key in buffer.keys()}
-        return transitions
+        return transitions, {"idxs": idxs}
 
 
 class DefaultEpisodicSampler(Sampler):
@@ -52,7 +60,7 @@ class DefaultEpisodicSampler(Sampler):
         self,
         buffer: Dict[str, Union[np.ndarray]],
         batch_size: int,
-    ) -> Dict[str, Union[np.ndarray]]:
+    ) -> Tuple[Dict[str, Union[np.ndarray, jnp.ndarray]], Dict[str, Any]]:
         rollout_batch_size = buffer["episode_length"].shape[0]
         episode_idxs = self.rng.choice(
             np.arange(rollout_batch_size),
@@ -66,4 +74,4 @@ class DefaultEpisodicSampler(Sampler):
         transitions = {
             key: buffer[key][episode_idxs, t_samples] for key in buffer.keys()
         }
-        return transitions
+        return transitions, dict()

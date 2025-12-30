@@ -150,6 +150,12 @@ class DefaultBuffer(Buffer):
                 self.buffers[key][idxs, :] = datatype_convert(
                     step[key], DataType.NUMPY
                 ).reshape((self.num_envs, self.dict_sizes[key]))
+        
+        # Update sampler on insertion
+        self.sampler.insert(step=step, idxs=idxs)
+    
+    def update_sampler(self, **kwargs):
+        self.sampler.update(**kwargs)
 
     def pre_sample(self):
         temp_buffers = {}
@@ -273,6 +279,9 @@ class DefaultEpisodicBuffer(EpisodicBuffer):
         self.buffers["episode_length"][
             self.current_idxs, self.zeros(self.num_envs), :
         ] = self.current_t.reshape((self.num_envs, 1))
+
+        # Update sampler on insertion
+        raise NotImplementedError
 
     def store_done(self, done):
         if done.max():

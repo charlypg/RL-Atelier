@@ -185,7 +185,7 @@ def main(hydra_config):
         # Perform step
         next_observation, reward, terminated, truncated, info = env.step(action)
 
-        # Store transition
+        # Collect transition
         transition = {
             "observation": np.expand_dims(observation, axis=0),
             "action": np.array([[action]], dtype=np.int64),
@@ -193,14 +193,15 @@ def main(hydra_config):
             "reward": np.array([[reward]]),
             "terminated": np.array([[terminated]])
         }
+        # Insert transition in buffer
         buffer.insert(transition)
 
         # Update if necessary
         if step > cfg["alg_general"]["start_training_after_x_steps"]:
-            # Sample batch
-            batch = buffer.sample(cfg["alg_general"]["batch_size"])
-
             if step % cfg["alg_general"]["update_params_every"] == 0:
+                # Sample batch
+                batch, batch_info = buffer.sample(cfg["alg_general"]["batch_size"])
+
                 # Perform gradient descent step
                 params, opt_state, updates, grad, metrics = agent.gradient_step(
                     params=params,
@@ -209,6 +210,11 @@ def main(hydra_config):
                     batch=batch
                 )
                 # logger_learning_metrics.log(metrics, step=step) # DEBUG
+
+                # Update sampler on gradient step
+                # TODO: batch_info update if necessary
+                buffer.update_sampler(**batch_info)
+            
             # Update target params
             target_params = agent.update_target_params(
                 params=params,
