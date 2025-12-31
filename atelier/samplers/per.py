@@ -12,13 +12,19 @@ class SumTree:
     """
 
     def __init__(
-        self, capacity: int, alpha: float = 1.0, init_max_priority: float = 1.0
+        self,
+        capacity: int,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+        init_max_priority: float = 1.0
     ):
         self.capacity = capacity
         self.tree = np.zeros(2 * capacity - 1, dtype=np.float64)
         self.data = np.zeros(capacity, dtype=np.int64)
         self.raw_priorities = np.zeros(capacity, dtype=np.float64)
-        self.alpha = alpha
+
+        self.alpha = alpha # How much we prioritize
+        self.beta = beta # Importance sampling hyperparameter
         self.init_max_priority = init_max_priority
 
         self.write = 0
@@ -50,7 +56,7 @@ class SumTree:
         return np.max(self.raw_priorities[:self.size])
 
 
-    def total(self):
+    def total(self) -> float:
         return self.tree[0]
 
     def add_batch(self, values, priorities):
@@ -104,7 +110,7 @@ class SumTree:
             self._propagate(tree_idx, delta)
 
 
-    def sample(self, batch_size):
+    def sample(self, batch_size) -> Dict[str, np.ndarray]:
         """
         Sample a batch of values according to softmax(priorities).
         Uses stratified sampling for lower variance.
@@ -122,7 +128,16 @@ class SumTree:
             sampled_values.append(self.data[data_idx])
             sampled_priorities.append(self.raw_priorities[data_idx])
 
-        return np.array(sampled_values), np.array(sampled_priorities)
+        idxs_info = dict(
+            idxs=np.array(sampled_values),
+            sampled_priorities=np.array(sampled_priorities)
+        )
+        idxs_info["sampled_priorities"] = np.maximum(idxs_info["sampled_priorities"], 1e-6)
+        idxs_info["log_probs"] = np.log(idxs_info["sampled_priorities"]) - np.log(self.total())
+        idxs_info["log_IS_weights"] = -self.beta * (np.log(self.size) + idxs_info["log_probs"])
+        idxs_info["IS_weights"] = np.exp(idxs_info["log_IS_weights"])
+        idxs_info["IS_weights"] /= idxs_info["IS_weights"].max()
+        return idxs_info
 
 
 class PERSampler(Sampler):
@@ -130,6 +145,7 @@ class PERSampler(Sampler):
         self,
         buffer_size: int,
         alpha: float,
+        beta: float,
         init_max_priority: float = 1.0,
         seed: Union[int, None] = None
     ):
@@ -137,7 +153,10 @@ class PERSampler(Sampler):
         
         # Encapsulate a SumTree for prioritized sampling
         self.sum_tree = SumTree(
-            capacity=buffer_size, alpha=alpha, init_max_priority=init_max_priority
+            capacity=buffer_size,
+            alpha=alpha,
+            beta=beta,
+            init_max_priority=init_max_priority
         )
 
     def insert(self, idxs: np.ndarray, **kwargs):
@@ -158,6 +177,6 @@ class PERSampler(Sampler):
         batch_size: int,
     ) -> Tuple[Dict[str, Union[np.ndarray, jnp.ndarray]], dict]:
         """Return a batch of transitions"""
-        idxs, _ = self.sum_tree.sample(batch_size)
-        transitions = {key: buffer[key][idxs] for key in buffer.keys()}
-        return transitions, {"idxs": idxs}
+        idxs_info = self.sum_tree.sample(batch_size)
+        transitions = {key: buffer[key][idxs_info["idxs"]] for key in buffer.keys()}
+        return transitions, idxs_info

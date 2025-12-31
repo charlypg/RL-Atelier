@@ -3,7 +3,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import optax
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from atelier.networks.dqn import DeepQNetwork
 from atelier.types import Metrics, Params
@@ -123,7 +123,8 @@ class DQN:
         actions: jnp.ndarray,
         next_observations: jnp.ndarray,
         rewards: jnp.ndarray,
-        masks: jnp.ndarray
+        masks: jnp.ndarray,
+        IS_weights: Optional[jnp.ndarray] = None
     ) -> Tuple[jnp.ndarray, Metrics]:
         actions_values = self.network.apply({"params": params}, observations)
         actions = jnp.array(actions, dtype=jnp.int32)
@@ -139,6 +140,9 @@ class DQN:
         print(current_action_values.shape, target_values.shape)
         td_error = current_action_values - target_values
         batch_loss = huber(td_error)
+        if IS_weights is not None:
+            print("DQN.dqn_loss: importance sampling activated")
+            batch_loss *= IS_weights
         loss = jnp.mean(batch_loss)
         return loss, {
             "loss": loss,
@@ -158,7 +162,8 @@ class DQN:
         params: Params,
         opt_state: optax.OptState,
         target_params: Params,
-        batch: Dict[str, np.ndarray]
+        batch: Dict[str, np.ndarray],
+        IS_weights: Optional[jnp.ndarray] = None
     ) -> tuple:
         print("COMPILE: DQN.gradient_step")
         grad, metrics = jax.grad(self.dqn_loss, has_aux=True)(
@@ -168,7 +173,8 @@ class DQN:
             actions=batch["action"],
             next_observations=batch["next_observation"],
             rewards=batch["reward"],
-            masks=1-batch["terminated"]
+            masks=1-batch["terminated"],
+            IS_weights=IS_weights
         )
         params, opt_state, updates = apply_updates(
             optimizer=self.optimizer,
@@ -234,7 +240,8 @@ class DoubleDQN(DQN):
         actions: jnp.ndarray,
         next_observations: jnp.ndarray,
         rewards: jnp.ndarray,
-        masks: jnp.ndarray
+        masks: jnp.ndarray,
+        IS_weights: Optional[jnp.ndarray] = None
     ) -> Tuple[jnp.ndarray, Metrics]:
         # Compute current value
         actions_values = self.network.apply({"params": params}, observations)
@@ -262,6 +269,9 @@ class DoubleDQN(DQN):
         # Compute loss
         td_error = current_action_values - target_values
         batch_loss = huber(td_error)
+        if IS_weights is not None:
+            print("DoubleDQN.dqn_loss: importance sampling activated")
+            batch_loss *= IS_weights
         loss = jnp.mean(batch_loss)
         return loss, {
             "loss": loss,

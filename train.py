@@ -122,7 +122,8 @@ def main(hydra_config):
         print("sampler: PERSampler")
         sampler = PERSampler(
             buffer_size=cfg["buffer"]["buffer_size"],
-            alpha=cfg["buffer"]["per_sampler"]["alpha"]
+            alpha=cfg["buffer"]["per_sampler"]["alpha"],
+            beta=cfg["buffer"]["per_sampler"]["beta"]
         )
 
     buffer = DefaultBuffer(
@@ -212,13 +213,18 @@ def main(hydra_config):
             if step % cfg["alg_general"]["update_params_every"] == 0:
                 # Sample batch
                 batch, batch_info = buffer.sample(cfg["alg_general"]["batch_size"])
+                if "IS_weights" in batch_info:
+                    IS_weights = batch_info["IS_weights"]
+                else:
+                    IS_weights = None
 
                 # Perform gradient descent step
                 params, opt_state, updates, grad, metrics = agent.gradient_step(
                     params=params,
                     opt_state=opt_state,
                     target_params=target_params,
-                    batch=batch
+                    batch=batch,
+                    IS_weights=IS_weights
                 )
                 # logger_learning_metrics.log(metrics, step=step) # DEBUG
 
