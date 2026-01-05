@@ -59,6 +59,9 @@ class SumTree:
     def total(self) -> float:
         return self.tree[0]
 
+    def priority_to_weight(self, priorities: np.ndarray) -> np.ndarray:
+        return np.exp(self.alpha * priorities)
+    
     def add_batch(self, values, priorities):
         """
         Insert a batch of values with priorities.
@@ -73,7 +76,7 @@ class SumTree:
             self.data[self.write] = v
             self.raw_priorities[self.write] = p
 
-            new_weight = np.exp(self.alpha * p)
+            new_weight = self.priority_to_weight(p) #np.exp(self.alpha * p)
             delta = new_weight - self.tree[tree_idx]
 
             self.tree[tree_idx] = new_weight
@@ -100,7 +103,7 @@ class SumTree:
             tree_idx = i + self.capacity - 1
 
             old_weight = self.tree[tree_idx]
-            new_weight = np.exp(self.alpha * p)
+            new_weight = self.priority_to_weight(p) #np.exp(self.alpha * p)
 
             delta = new_weight - old_weight
 
@@ -121,7 +124,10 @@ class SumTree:
         segment = self.total() / batch_size
 
         for i in range(batch_size):
-            s = np.random.uniform(segment * i, segment * (i + 1))
+            try:
+                s = np.random.uniform(segment * i, segment * (i + 1))
+            except:
+                print("AAAAAAAAHHHHHH", segment)
             idx = self._retrieve(0, s)
             data_idx = idx - self.capacity + 1
 
@@ -132,11 +138,16 @@ class SumTree:
             idxs=np.array(sampled_values),
             sampled_priorities=np.array(sampled_priorities)
         )
-        idxs_info["sampled_priorities"] = np.maximum(idxs_info["sampled_priorities"], 1e-6)
-        idxs_info["log_probs"] = np.log(idxs_info["sampled_priorities"]) - np.log(self.total())
-        idxs_info["log_IS_weights"] = -self.beta * (np.log(self.size) + idxs_info["log_probs"])
-        idxs_info["IS_weights"] = np.exp(idxs_info["log_IS_weights"])
-        idxs_info["IS_weights"] /= idxs_info["IS_weights"].max()
+        # idxs_info["sampled_priorities"] = np.maximum(idxs_info["sampled_priorities"], 1e-6)
+        # idxs_info["log_probs"] = np.log(idxs_info["sampled_priorities"]) - np.log(self.total())
+        # idxs_info["log_IS_weights"] = -self.beta * (np.log(self.size) + idxs_info["log_probs"])
+        # idxs_info["IS_weights"] = np.exp(idxs_info["log_IS_weights"])
+        # idxs_info["IS_weights"] /= idxs_info["IS_weights"].max()
+        
+        idxs_info["sampled_weights"] = self.priority_to_weight(idxs_info["sampled_priorities"])
+        idxs_info["sampled_weights_norm"] = idxs_info["sampled_weights"] / self.total()
+        idxs_info["IS_weights"] = (self.size * idxs_info["sampled_weights_norm"]) ** (-self.beta)
+
         return idxs_info
 
 

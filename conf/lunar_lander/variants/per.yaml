@@ -2,4 +2,4 @@ buffer:
   buffer_size: 1_000_000
   per_sampler:
     alpha: 0.4
-    beta: 0.4
+    beta: 1.0
